@@ -1,0 +1,920 @@
+Build a complete REST API backend for an **Employee Management System** with two roles:
+
+* ADMIN
+* EMPLOYEE
+
+Use the following technology stack:
+
+### Backend Stack
+
+* Node.js
+* Express.js
+* TypeScript
+* MySQL
+* Prisma ORM
+* JWT authentication
+* bcrypt for password hashing
+* Zod for request validation
+* Multer for profile/attachment uploads
+* Helmet
+* CORS
+* dotenv
+* Winston or Pino for logging
+
+Create a clean, scalable and production-ready backend architecture.
+
+---
+
+# 1. PROJECT STRUCTURE
+
+Use this structure:
+
+```text
+backend/
+├── src/
+│   ├── config/
+│   │   ├── database.ts
+│   │   └── env.ts
+│   │
+│   ├── controllers/
+│   │   ├── auth.controller.ts
+│   │   ├── employee.controller.ts
+│   │   ├── task.controller.ts
+│   │   ├── attendance.controller.ts
+│   │   ├── leave.controller.ts
+│   │   ├── report.controller.ts
+│   │   └── dashboard.controller.ts
+│   │
+│   ├── middleware/
+│   │   ├── auth.middleware.ts
+│   │   ├── role.middleware.ts
+│   │   ├── error.middleware.ts
+│   │   └── upload.middleware.ts
+│   │
+│   ├── routes/
+│   │   ├── auth.routes.ts
+│   │   ├── employee.routes.ts
+│   │   ├── task.routes.ts
+│   │   ├── attendance.routes.ts
+│   │   ├── leave.routes.ts
+│   │   ├── report.routes.ts
+│   │   └── dashboard.routes.ts
+│   │
+│   ├── services/
+│   │   ├── auth.service.ts
+│   │   ├── employee.service.ts
+│   │   ├── task.service.ts
+│   │   ├── attendance.service.ts
+│   │   ├── leave.service.ts
+│   │   └── dashboard.service.ts
+│   │
+│   ├── validators/
+│   │   ├── auth.validator.ts
+│   │   ├── employee.validator.ts
+│   │   ├── task.validator.ts
+│   │   └── leave.validator.ts
+│   │
+│   ├── utils/
+│   │   ├── jwt.ts
+│   │   ├── password.ts
+│   │   └── response.ts
+│   │
+│   ├── app.ts
+│   └── server.ts
+│
+├── prisma/
+│   ├── schema.prisma
+│   └── seed.ts
+│
+├── uploads/
+├── .env
+├── .env.example
+├── package.json
+├── tsconfig.json
+└── README.md
+```
+
+---
+
+# 2. DATABASE
+
+Use MySQL with Prisma.
+
+Create these models:
+
+## User
+
+```text
+User
+- id
+- name
+- email
+- password
+- role
+- isActive
+- createdAt
+- updatedAt
+```
+
+Role:
+
+```text
+ADMIN
+EMPLOYEE
+```
+
+Email must be unique.
+
+Passwords must NEVER be stored as plain text.
+
+---
+
+## Employee
+
+```text
+Employee
+- id
+- userId
+- employeeId
+- phone
+- department
+- position
+- joiningDate
+- profileImage
+- status
+- createdAt
+- updatedAt
+```
+
+Status:
+
+```text
+ACTIVE
+INACTIVE
+```
+
+Relationship:
+
+```text
+User 1 ---- 1 Employee
+```
+
+---
+
+## Task
+
+```text
+Task
+- id
+- title
+- description
+- employeeId
+- priority
+- status
+- startDate
+- dueDate
+- createdAt
+- updatedAt
+```
+
+Priority:
+
+```text
+LOW
+MEDIUM
+HIGH
+URGENT
+```
+
+Status:
+
+```text
+PENDING
+IN_PROGRESS
+COMPLETED
+```
+
+Relationship:
+
+```text
+Employee 1 ---- many Tasks
+```
+
+---
+
+## Attendance
+
+```text
+Attendance
+- id
+- employeeId
+- date
+- checkIn
+- checkOut
+- workingHours
+- status
+- createdAt
+- updatedAt
+```
+
+Status:
+
+```text
+PRESENT
+ABSENT
+LATE
+LEAVE
+```
+
+An employee should have only one attendance record per day.
+
+---
+
+## Leave
+
+```text
+Leave
+- id
+- employeeId
+- leaveType
+- fromDate
+- toDate
+- numberOfDays
+- reason
+- attachment
+- status
+- rejectionReason
+- approvedBy
+- createdAt
+- updatedAt
+```
+
+Leave type:
+
+```text
+CASUAL
+SICK
+EARNED
+OTHER
+```
+
+Status:
+
+```text
+PENDING
+APPROVED
+REJECTED
+```
+
+---
+
+## TaskComment
+
+```text
+TaskComment
+- id
+- taskId
+- employeeId
+- comment
+- createdAt
+```
+
+---
+
+# 3. AUTHENTICATION
+
+Implement JWT authentication.
+
+### Login
+
+```http
+POST /api/auth/login
+```
+
+Request:
+
+```json
+{
+  "email": "admin@example.com",
+  "password": "admin123"
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "token": "JWT_TOKEN",
+    "user": {
+      "id": 1,
+      "name": "Admin",
+      "email": "admin@example.com",
+      "role": "ADMIN"
+    }
+  }
+}
+```
+
+Create:
+
+```http
+GET /api/auth/me
+```
+
+Return the currently authenticated user.
+
+Create logout endpoint if needed for token/session handling.
+
+---
+
+# 4. ROLE-BASED ACCESS CONTROL
+
+Create middleware:
+
+```text
+authenticate()
+authorize("ADMIN")
+authorize("EMPLOYEE")
+```
+
+Rules:
+
+### Admin
+
+Admin can access:
+
+* Employees
+* All Tasks
+* All Attendance
+* All Leave Requests
+* Reports
+* Dashboard
+
+### Employee
+
+Employee can access:
+
+* Own profile
+* Own tasks
+* Own attendance
+* Own leave requests
+
+Employees MUST NOT be able to access another employee's private information.
+
+---
+
+# 5. EMPLOYEE API
+
+Admin endpoints:
+
+```http
+GET    /api/employees
+GET    /api/employees/:id
+POST   /api/employees
+PUT    /api/employees/:id
+DELETE /api/employees/:id
+PATCH  /api/employees/:id/status
+```
+
+Support:
+
+```text
+Search
+Pagination
+Department filter
+Status filter
+```
+
+Example:
+
+```http
+GET /api/employees?search=rahul&department=Development&page=1&limit=10
+```
+
+When creating an employee:
+
+1. Create User
+2. Hash password
+3. Create Employee record
+4. Generate employee ID
+5. Return employee information
+
+---
+
+# 6. EMPLOYEE PROFILE API
+
+Employee:
+
+```http
+GET /api/employees/me
+PUT /api/employees/me
+POST /api/employees/me/profile-image
+```
+
+Employee can update only their own profile.
+
+---
+
+# 7. TASK API
+
+Admin:
+
+```http
+GET    /api/tasks
+GET    /api/tasks/:id
+POST   /api/tasks
+PUT    /api/tasks/:id
+DELETE /api/tasks/:id
+```
+
+Admin can assign tasks to employees.
+
+Example:
+
+```json
+{
+  "title": "Create Login Page",
+  "description": "Create responsive login page",
+  "employeeId": 5,
+  "priority": "HIGH",
+  "startDate": "2026-09-10",
+  "dueDate": "2026-09-15"
+}
+```
+
+Employee:
+
+```http
+GET   /api/tasks/my
+GET   /api/tasks/:id
+PATCH /api/tasks/:id/status
+POST  /api/tasks/:id/comments
+```
+
+Employee can only update their assigned tasks.
+
+Employee can change status:
+
+```text
+PENDING → IN_PROGRESS → COMPLETED
+```
+
+Prevent invalid status transitions.
+
+---
+
+# 8. ATTENDANCE API
+
+Employee:
+
+```http
+POST /api/attendance/check-in
+POST /api/attendance/check-out
+GET  /api/attendance/my
+```
+
+Admin:
+
+```http
+GET /api/attendance
+GET /api/attendance/:employeeId
+```
+
+Check-in rules:
+
+* Employee cannot check in twice on the same day.
+* Check-out requires check-in first.
+* Check-out cannot happen before check-in.
+* Automatically calculate working hours.
+
+Example response:
+
+```json
+{
+  "date": "2026-09-10",
+  "checkIn": "09:30",
+  "checkOut": "18:00",
+  "workingHours": 8.5,
+  "status": "PRESENT"
+}
+```
+
+Support filters:
+
+```text
+date
+employee
+department
+status
+month
+```
+
+---
+
+# 9. LEAVE API
+
+Employee:
+
+```http
+POST /api/leaves
+GET  /api/leaves/my
+GET  /api/leaves/:id
+```
+
+Admin:
+
+```http
+GET   /api/leaves
+GET   /api/leaves/:id
+PATCH /api/leaves/:id/approve
+PATCH /api/leaves/:id/reject
+```
+
+Employee request:
+
+```json
+{
+  "leaveType": "CASUAL",
+  "fromDate": "2026-09-15",
+  "toDate": "2026-09-16",
+  "reason": "Personal work"
+}
+```
+
+Automatically calculate number of days.
+
+Admin rejection:
+
+```json
+{
+  "rejectionReason": "Insufficient leave balance"
+}
+```
+
+Rules:
+
+* Employee cannot approve their own leave.
+* Employee cannot modify an approved/rejected request.
+* Validate date ranges.
+* Prevent invalid dates.
+* Prevent overlapping leave requests.
+
+---
+
+# 10. ADMIN DASHBOARD API
+
+Create:
+
+```http
+GET /api/dashboard/admin
+```
+
+Return:
+
+```json
+{
+  "totalEmployees": 25,
+  "activeEmployees": 23,
+  "totalTasks": 80,
+  "pendingTasks": 20,
+  "inProgressTasks": 15,
+  "completedTasks": 45,
+  "pendingLeaves": 5,
+  "attendance": {
+    "present": 20,
+    "absent": 2,
+    "leave": 3
+  }
+}
+```
+
+Also return:
+
+* Recent tasks
+* Recent leave requests
+* Weekly task statistics
+* Attendance statistics
+
+---
+
+# 11. EMPLOYEE DASHBOARD API
+
+Create:
+
+```http
+GET /api/dashboard/employee
+```
+
+Return:
+
+```json
+{
+  "assignedTasks": 8,
+  "pendingTasks": 3,
+  "inProgressTasks": 2,
+  "completedTasks": 3,
+  "leaveBalance": 10,
+  "todayAttendance": null,
+  "recentTasks": []
+}
+```
+
+---
+
+# 12. REPORT APIs
+
+Create:
+
+```http
+GET /api/reports/employees
+GET /api/reports/tasks
+GET /api/reports/attendance
+GET /api/reports/leaves
+```
+
+Support filters such as:
+
+```text
+employee
+department
+dateFrom
+dateTo
+status
+```
+
+Return data that the frontend can use to create charts and tables.
+
+---
+
+# 13. SEARCH AND PAGINATION
+
+All large list endpoints should support:
+
+```text
+?page=1
+&limit=10
+&search=
+&status=
+&department=
+```
+
+Return:
+
+```json
+{
+  "data": [],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 100,
+    "totalPages": 10
+  }
+}
+```
+
+---
+
+# 14. ERROR HANDLING
+
+Use a global error handler.
+
+Return consistent responses:
+
+### Success
+
+```json
+{
+  "success": true,
+  "message": "Employee created successfully",
+  "data": {}
+}
+```
+
+### Error
+
+```json
+{
+  "success": false,
+  "message": "Employee not found",
+  "errors": []
+}
+```
+
+Handle:
+
+* Validation errors
+* Unauthorized requests
+* Forbidden requests
+* Not found
+* Duplicate email
+* Database errors
+* Invalid JWT
+* Expired JWT
+
+Never expose passwords or sensitive information.
+
+---
+
+# 15. VALIDATION
+
+Use Zod for:
+
+* Login
+* Employee creation
+* Employee update
+* Task creation
+* Task update
+* Leave request
+* Attendance
+* Password change
+
+Validate email, dates, required fields, enums and IDs.
+
+---
+
+# 16. SECURITY
+
+Implement:
+
+* bcrypt password hashing
+* JWT authentication
+* Role-based authorization
+* Helmet
+* CORS
+* Request validation
+* Rate limiting on authentication endpoints
+* Environment variables
+* Safe error messages
+* No password in API responses
+
+Never store:
+
+```text
+password: "admin123"
+```
+
+Store only a bcrypt hash.
+
+---
+
+# 17. SEED DATA
+
+Create Prisma seed data.
+
+Create:
+
+### Admin
+
+```text
+Email: admin@example.com
+Password: admin123
+Role: ADMIN
+```
+
+### Employee
+
+```text
+Email: employee@example.com
+Password: employee123
+Role: EMPLOYEE
+```
+
+Also create:
+
+* 10 employees
+* 20 tasks
+* Attendance records
+* Leave requests
+* Task comments
+
+Use realistic demo data.
+
+---
+
+# 18. ENVIRONMENT VARIABLES
+
+Create `.env.example`:
+
+```env
+PORT=5000
+
+DATABASE_URL="mysql://root:password@localhost:3306/employee_management"
+
+JWT_SECRET="change_this_secret"
+JWT_EXPIRES_IN="7d"
+
+UPLOAD_DIR="./uploads"
+
+CORS_ORIGIN="http://localhost:5173"
+```
+
+Do not hard-code secrets.
+
+---
+
+# 19. API DOCUMENTATION
+
+Create a complete README containing:
+
+* Project setup
+* Node.js requirements
+* MySQL setup
+* Environment variables
+* Prisma migration commands
+* Database seed command
+* Development command
+* Production command
+* API endpoint documentation
+* Authentication instructions
+* Demo credentials
+
+Also add Swagger/OpenAPI documentation at:
+
+```http
+/api/docs
+```
+
+---
+
+# 20. FRONTEND INTEGRATION
+
+The backend must be designed to connect directly to the React frontend.
+
+Base URL:
+
+```text
+http://localhost:5000/api
+```
+
+Enable CORS for:
+
+```text
+http://localhost:5173
+```
+
+Use JSON responses consistently.
+
+The frontend should be able to:
+
+1. Login
+2. Store JWT
+3. Send JWT using Authorization header
+
+```http
+Authorization: Bearer JWT_TOKEN
+```
+
+4. Load dashboard
+5. Manage employees
+6. Create and assign tasks
+7. Update tasks
+8. Check in/out
+9. Apply for leave
+10. Approve/reject leave
+11. Load reports
+
+---
+
+# FINAL REQUIREMENT
+
+Generate the **complete working backend**, not just examples.
+
+Provide:
+
+* All source files
+* Prisma schema
+* Database migrations
+* Seed script
+* Controllers
+* Services
+* Routes
+* Middleware
+* Validators
+* Authentication
+* Authorization
+* Error handling
+* API documentation
+* README
+* `.env.example`
+* `package.json`
+* TypeScript configuration
+
+Make sure the project can be started with:
+
+```bash
+npm install
+npx prisma migrate dev
+npx prisma db seed
+npm run dev
+```
+
+The backend should run on:
+
+```text
+http://localhost:5000
+```
+
+and be ready to connect to the React frontend.
